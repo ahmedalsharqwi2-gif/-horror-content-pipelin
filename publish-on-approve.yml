@@ -1,0 +1,86 @@
+name: Publish Approved Episode
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  publish:
+    if: >
+      contains(github.event.issue.labels.*.name, 'horror-draft') &&
+      contains(github.event.comment.body, '/approve')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Extract original run ID from issue body
+        id: extract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body;
+            const match = body.match(/actions\/runs\/(\d+)/);
+            if (!match) core.setFailed("مش لاقي run id جوه الـ issue");
+            core.setOutput("run_id", match[1]);
+
+      - name: Download the approved video artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: draft-video
+          path: output
+          run-id: ${{ steps.extract.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Recreate episode metadata from issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = context.payload.issue.body;
+            const title = context.payload.issue.title.replace('مراجعة: ', '');
+            const narrationMatch = body.match(/\*\*السيناريو:\*\*\n([\s\S]*?)\n\n\*\*الكابشن/);
+            const captionMatch = body.match(/\*\*الكابشن المقترح:\*\*\n([\s\S]*?)\n\n---/);
+            const episode = {
+              title: title,
+              narration: narrationMatch ? narrationMatch[1].trim() : "",
+              caption: captionMatch ? captionMatch[1].trim() : "",
+            };
+            fs.mkdirSync('state', { recursive: true });
+            fs.writeFileSync('state/current_episode.json', JSON.stringify(episode, null, 2));
+
+      - name: Publish via Buffer
+        env:
+          BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
+          BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+        run: python scripts/publish_buffer.py
+
+      - name: Comment confirmation and close issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "✅ اتنشر الفيديو بنجاح عبر Buffer."
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: "closed"
+            });
