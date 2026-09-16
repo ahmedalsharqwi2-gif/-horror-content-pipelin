@@ -52,6 +52,7 @@ def generate_episode() -> dict:
             {"role": "user", "content": user_message},
         ],
         temperature=0.9,  # تنويع أعلى بين الحلقات
+        max_tokens=3000,  # القصة بقت أطول (~2.5-2.8 دقيقة قراءة) فمحتاجة مساحة أكبر
         response_format={"type": "json_object"},
     )
 

@@ -1,13 +1,13 @@
-name: Create Horror Episode Draft
+name: Create and Publish Horror Episode
 
 on:
   schedule:
-    - cron: "0 20 * * *"   # كل يوم الساعة 10 مساءً بتوقيت القاهرة تقريبًا (عدّل حسب UTC)
-  workflow_dispatch: {}     # يسمحلك تشغّله يدويًا من تاب Actions وقت ما تحب
+    - cron: "0 13 * * *"   # الساعة 3 عصرًا بتوقيت القاهرة (UTC+2 ثابت)
+    - cron: "0 17 * * *"   # الساعة 7 مساءً بتوقيت القاهرة (UTC+2 ثابت)
+  workflow_dispatch: {}     # للتشغيل اليدوي وقت الاختبار
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   build-draft:
@@ -34,23 +34,25 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python scripts/fetch_clips.py
 
-      - name: Generate human-like voice (edge-tts)
+      - name: Generate human-like voice + synced subtitles (edge-tts)
         run: python scripts/generate_voice.py
 
-      - name: Assemble final video (ffmpeg)
+      - name: Assemble final video with burned captions (ffmpeg)
         run: python scripts/assemble_video.py
 
-      - name: Upload video as artifact
+      - name: Publish directly via Buffer
+        env:
+          BUFFER_ACCESS_TOKEN: ${{ secrets.BUFFER_ACCESS_TOKEN }}
+          BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/publish_buffer.py
+
+      - name: Upload video as artifact (for your own records)
         uses: actions/upload-artifact@v4
         with:
-          name: draft-video
+          name: published-video
           path: output/final_video.mp4
           retention-days: 14
-
-      - name: Open review issue
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/open_review_issue.py
 
       - name: Commit updated clip-tracking state
         run: |
